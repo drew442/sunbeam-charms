@@ -1,0 +1,71 @@
+type: charm
+name: lvm-san
+summary: LVM SAN machine charm (snap-first orchestration)
+description: |
+  Machine charm that writes lvm-san intent for the snap control plane,
+  triggers snap reconcile, and publishes backend readiness over
+  lvm-san-backend relation.
+
+assumes:
+  - juju >= 3.1
+
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+config:
+  options:
+    backend-key:
+      type: string
+      default: lvm-san.default
+      description: Stable backend identifier.
+    vips:
+      type: string
+      default: ""
+      description: Comma-separated VIP IP addresses.
+    portals:
+      type: string
+      default: ""
+      description: Optional comma-separated portal IP addresses.
+    volume-group:
+      type: string
+      default: cinder-volumes
+      description: LVM volume group for backend.
+    thin-pool:
+      type: string
+      default: ""
+      description: Optional thin pool name.
+    target-helper:
+      type: string
+      default: lioadm
+      description: Cinder target helper.
+    intent-path:
+      type: string
+      default: /var/snap/lvm-san-agent/common/intent.json
+      description: Path where charm writes intent for snap.
+    status-path:
+      type: string
+      default: /var/snap/lvm-san-agent/common/status.json
+      description: Path where snap writes status for charm.
+    snap-reconcile-command:
+      type: string
+      default: "snap run lvm-san-agent.lvm-san-agent reconcile-once"
+      description: Command used by charm to trigger one snap reconcile pass.
+
+provides:
+  lvm-san-backend:
+    interface: lvm-san-backend
+
+requires:
+  tracing:
+    interface: tracing
+    optional: true
+    limit: 1
+
+parts:
+  charm:
+    build-snaps: [astral-uv]
+    override-build: |
+      uv export --frozen --no-hashes --format=requirements-txt -o requirements.txt
+      craftctl default
+    charm-requirements: [requirements.txt]

@@ -1,0 +1,56 @@
+type: charm
+name: cinder-volume-lvm-san
+summary: OpenStack volume service - LVM SAN backend
+
+description: |
+  Subordinate charm that wires cinder-volume to an HA LVM SAN backend
+  managed by the lvm-san machine charm.
+
+assumes:
+  - juju >= 3.1
+
+links:
+  source:
+    - https://opendev.org/openstack/sunbeam-charms
+  issues:
+    - https://bugs.launchpad.net/sunbeam-charms
+
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+subordinate: true
+
+config:
+  options:
+    backend-availability-zone:
+      type: string
+      default: null
+      description: |
+        Availability zone to associate with this backend.
+    target-helper:
+      type: string
+      default: lioadm
+      description: |
+        Cinder target helper to use for iSCSI exports.
+
+requires:
+  cinder-volume:
+    interface: cinder-volume
+    scope: container
+    limit: 1
+  lvm-san-backend:
+    interface: lvm-san-backend
+    limit: 1
+  tracing:
+    interface: tracing
+    optional: true
+    limit: 1
+
+parts:
+  charm:
+    build-snaps: [astral-uv]
+    override-build: |
+      uv export --frozen --no-hashes --format=requirements-txt -o requirements.txt
+      craftctl default
+    charm-requirements: [requirements.txt]
