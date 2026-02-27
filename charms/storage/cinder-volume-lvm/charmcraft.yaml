@@ -1,0 +1,209 @@
+type: charm
+name: cinder-volume-lvm
+summary: OpenStack volume service - LVM backend
+description: |
+  Cinder is the OpenStack project that provides block-storage management
+  for virtual machines and bare-metal hosts. This charm integrates the
+  `cinder-volume` snap with the Linux LVM backend. It renders a dedicated
+  backend stanza (`lvm.<app-name>.*`) in *cinder.conf* and manages driver
+  options via Juju config.
+
+assumes:
+  - juju >= 3.3
+
+links:
+  source:
+    - https://opendev.org/openstack/sunbeam-charms
+  issues:
+    - https://bugs.launchpad.net/sunbeam-charms
+
+base: ubuntu@24.04
+platforms:
+  amd64:
+
+subordinate: true
+
+config:
+  options:
+    volume-backend-name:
+      type: string
+      default: null
+      description: |
+        Name that Cinder will report for this backend. If unset the Juju
+        application name is used.
+    backend-availability-zone:
+      type: string
+      default: null
+      description: |
+        Availability zone to associate with this backend (Pike+).
+    volume-group:
+      type: string
+      default: cinder-volumes
+      description: Name of the VG that will contain exported volumes.
+    lvm-type:
+      type: string
+      default: auto
+      enum: [default, thin, auto]
+      description: |
+        Type of LVM volumes to deploy; `default`, `thin`, or `auto`.
+    lvm-mirrors:
+      type: int
+      default: 0
+      description: |
+        If >0, create LVs with multiple mirrors. Requires lvm_mirrors + 2 PVs.
+    lvm-conf-file:
+      type: string
+      default: /etc/cinder/lvm.conf
+      description: |
+        LVM conf file to use for the LVM driver in Cinder. Use `None` to disable.
+    lvm-suppress-fd-warnings:
+      type: boolean
+      default: false
+      description: Suppress leaked file descriptor warnings in LVM commands.
+    lvm-share-target:
+      type: boolean
+      default: false
+      description: |
+        Share the same target for all LUNs (currently only supported by nvmet).
+    target-helper:
+      type: string
+      default: tgtadm
+      enum: [tgtadm, lioadm, scstadmin, iscsictl, nvmet, spdk-nvmeof, fake]
+      description: Target user-land tool to use for volume export.
+    target-protocol:
+      type: string
+      default: iscsi
+      enum: [iscsi, iser, nvmet_rdma, nvmet_tcp]
+      description: Target protocol used by the helper.
+    target-ip-address:
+      type: string
+      default: $my_ip
+      description: IP address that the iSCSI/NVMe-oF daemon is listening on.
+    target-port:
+      type: int
+      default: 3260
+      description: Port that the iSCSI/NVMe-oF daemon is listening on.
+    target-prefix:
+      type: string
+      default: iqn.2010-10.org.openstack:
+      description: Prefix for iSCSI/NVMe-oF volumes.
+    target-secondary-ip-addresses:
+      type: string
+      default: null
+      description: Comma-separated list of secondary IP addresses.
+    iscsi-iotype:
+      type: string
+      default: fileio
+      enum: [blockio, fileio, auto]
+      description: iSCSI target I/O type (tgtadm only).
+    iscsi-target-flags:
+      type: string
+      default: ""
+      description: Target-specific flags passed to tgtadm.
+    iscsi-write-cache:
+      type: string
+      default: on
+      enum: [on, off]
+      description: Write-cache mode for tgtadm targets.
+    nvmet-port-id:
+      type: int
+      default: 1
+      description: NVMe target port ID.
+    nvmet-ns-id:
+      type: int
+      default: 10
+      description: NVMe subsystem namespace ID.
+    scst-target-driver:
+      type: string
+      default: iscsi
+      description: SCST target driver implementation.
+    scst-target-iqn-name:
+      type: string
+      default: null
+      description: SCST target IQN name (optional).
+    spdk-rpc-ip:
+      type: string
+      default: null
+      description: SPDK NVMe-oF RPC IP address.
+    spdk-rpc-port:
+      type: int
+      default: 8000
+      description: SPDK NVMe-oF RPC port.
+    spdk-rpc-username:
+      type: string
+      default: null
+      description: SPDK NVMe-oF RPC username.
+    spdk-rpc-password:
+      type: string
+      default: null
+      description: SPDK NVMe-oF RPC password.
+    spdk-max-queue-depth:
+      type: int
+      default: 64
+      description: Queue depth for RDMA transport.
+    volume-clear:
+      type: string
+      default: zero
+      enum: [none, zero]
+      description: Method used to wipe old volumes.
+    volume-clear-size:
+      type: int
+      default: 0
+      description: Size in MiB to wipe at start of old volumes (0 = all).
+    volume-clear-ionice:
+      type: string
+      default: null
+      description: |
+        Flag to pass to ionice when wiping volumes (e.g. "-c3").
+    volume-dd-blocksize:
+      type: string
+      default: 1M
+      description: Block size used when copying/clearing volumes.
+    reserved-percentage:
+      type: int
+      default: 0
+      description: Percentage of backend capacity reserved.
+    max-over-subscription-ratio:
+      type: string
+      default: 20.0
+      description: Over-subscription ratio when thin provisioning is enabled.
+    volumes-dir:
+      type: string
+      default: $state_path/volumes
+      description: Volume configuration file storage directory.
+
+requires:
+  cinder-volume:
+    interface: cinder-volume
+    scope: container
+    limit: 1
+  tracing:
+    interface: tracing
+    optional: true
+    limit: 1
+
+parts:
+  update-certificates:
+    plugin: nil
+    override-build: |
+      apt-get update
+      apt-get install -y ca-certificates
+      update-ca-certificates
+  charm:
+    after:
+      - update-certificates
+    build-packages:
+      - git
+      - libffi-dev
+      - libssl-dev
+      - pkg-config
+    charm-binary-python-packages:
+      - cryptography
+      - jsonschema
+      - pydantic
+      - jinja2
+    build-snaps: [astral-uv]
+    override-build: |
+      uv export --frozen --no-hashes --format=requirements-txt -o requirements.txt
+      craftctl default
+    charm-requirements: [requirements.txt]
