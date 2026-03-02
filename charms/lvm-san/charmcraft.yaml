@@ -39,6 +39,22 @@ config:
       type: string
       default: lioadm
       description: Cinder target helper.
+    iscsi-targets:
+      type: string
+      default: ""
+      description: Optional comma-separated iSCSI target portals to login.
+    block-devices:
+      type: string
+      default: ""
+      description: Optional comma-separated block device paths used to create VG.
+    enforce-mode:
+      type: boolean
+      default: false
+      description: Enable snap-side reconcile actions in addition to readiness probes.
+    manage-pacemaker-vips:
+      type: boolean
+      default: false
+      description: Allow snap to create missing pacemaker VIP resources for backend VIPs.
     intent-path:
       type: string
       default: /var/snap/lvm-san-agent/common/intent.json

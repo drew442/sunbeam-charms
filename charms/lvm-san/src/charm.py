@@ -55,11 +55,15 @@ class LVMSANCharm(ops.CharmBase):
             "api_version": "v1alpha1",
             "node_name": f"{self.app.name}/{self.unit.name.split('/')[-1]}",
             "fencing_required": True,
+            "enforce_mode": bool(self.config["enforce-mode"]),
+            "manage_pacemaker_vips": bool(self.config["manage-pacemaker-vips"]),
             "backends": [
                 {
                     "backend_key": self.config["backend-key"],
                     "vips": self._csv_list(self.config["vips"]),
                     "portals": self._csv_list(self.config["portals"]),
+                    "iscsi_targets": self._csv_list(self.config["iscsi-targets"]),
+                    "block_devices": self._csv_list(self.config["block-devices"]),
                     "volume_group": self.config["volume-group"],
                     "thin_pool": self.config["thin-pool"] or None,
                     "target_helper": self.config["target-helper"],
