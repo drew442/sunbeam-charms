@@ -1,8 +1,8 @@
 type: charm
 name: lvm-san
-summary: LVM SAN machine charm (snap-first orchestration)
+summary: Standalone LVM SAN machine charm (snap-first orchestration)
 description: |
-  Machine charm that writes lvm-san intent for the snap control plane,
+  Standalone machine charm that writes lvm-san intent for the snap control plane,
   triggers snap reconcile, and publishes backend readiness over
   lvm-san-backend relation.
 
@@ -39,6 +39,22 @@ config:
       type: string
       default: lioadm
       description: Cinder target helper.
+    test-export-enabled:
+      type: boolean
+      default: false
+      description: Create a standalone iSCSI test export (LV + targetcli + pacemaker resource).
+    test-export-lv-name:
+      type: string
+      default: lvm-san-test-lv
+      description: LV name used for standalone iSCSI test export.
+    test-export-lv-size:
+      type: string
+      default: 10G
+      description: LV size for standalone iSCSI test export (for example 10G).
+    test-export-iqn-prefix:
+      type: string
+      default: iqn.2026-01.com.ubuntu.lvm-san
+      description: Prefix used to derive standalone test export IQN.
     iscsi-targets:
       type: string
       default: ""
@@ -55,6 +71,10 @@ config:
       type: boolean
       default: false
       description: Allow snap to create missing pacemaker VIP resources for backend VIPs.
+    fencing-required:
+      type: boolean
+      default: true
+      description: Require fencing before backend is considered ready.
     intent-path:
       type: string
       default: /var/snap/lvm-san-agent/common/intent.json
@@ -65,18 +85,12 @@ config:
       description: Path where snap writes status for charm.
     snap-reconcile-command:
       type: string
-      default: "snap run lvm-san-agent.lvm-san-agent reconcile-once"
+      default: "snap run lvm-san-agent.lvm-san-agent-cli reconcile-once"
       description: Command used by charm to trigger one snap reconcile pass.
 
 provides:
   lvm-san-backend:
     interface: lvm-san-backend
-
-requires:
-  tracing:
-    interface: tracing
-    optional: true
-    limit: 1
 
 parts:
   charm:

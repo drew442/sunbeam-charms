@@ -108,6 +108,7 @@ dependencies = [
     { name = "netifaces" },
     { name = "opentelemetry-api" },
     { name = "ops" },
+    { name = "ops-sunbeam" },
     { name = "pydantic" },
     { name = "requests" },
     { name = "tenacity" },
@@ -125,6 +126,7 @@ requires-dist = [
     { name = "netifaces" },
     { name = "opentelemetry-api", specifier = "~=1.21.0" },
     { name = "ops" },
+    { name = "ops-sunbeam", git = "https://opendev.org/openstack/sunbeam-charms?subdirectory=ops-sunbeam" },
     { name = "pydantic" },
     { name = "requests" },
     { name = "tenacity" },
@@ -395,6 +397,17 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d3/bb/79b7efdb1243cbad11b6568c51ba4fb7358cd2c4d13bfd971a77c0aa7440/ops-3.6.0.tar.gz", hash = "sha256:a1c3361049c66759840a436143b07c74c2a46dcc44cbfd1177a9051f849c7971", size = 579236, upload-time = "2026-02-26T04:19:12.689Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8c/b6/d7daab4f841566d3cb0402d3463f7c1a00626724d6d7c02d7bf934ae6c86/ops-3.6.0-py3-none-any.whl", hash = "sha256:341c6688684446cc4b42860738898683feb271175bb9c4775ae68c81e4e0976a", size = 211856, upload-time = "2026-02-26T04:19:08.012Z" },
+]
+
+[[package]]
+name = "ops-sunbeam"
+version = "0.0.1.dev1"
+source = { git = "https://opendev.org/openstack/sunbeam-charms?subdirectory=ops-sunbeam#f9559c251171ef5a9a84c761d6e006ad4160b776" }
+dependencies = [
+    { name = "lightkube" },
+    { name = "lightkube-models" },
+    { name = "ops" },
+    { name = "tenacity" },
 ]
 
 [[package]]

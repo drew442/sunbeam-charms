@@ -1,0 +1,259 @@
+reconcile-now:
+  description: Run one reconcile pass using current charm config and snap status paths.
+
+show-snap-status:
+  description: Return the raw snap status JSON currently written at status-path.
+
+san-check:
+  description: Check TCP connectivity to SAN portals using nc -zv.
+  params:
+    portals:
+      type: string
+      description: Comma-separated portal endpoints (ip[:port]). Defaults to config iscsi-targets.
+    timeout:
+      type: integer
+      default: 3
+      description: TCP connect timeout in seconds.
+
+iscsi-login:
+  description: Run iSCSI discovery/login for configured targets.
+  params:
+    targets:
+      type: string
+      description: Comma-separated target endpoints (ip[:port]). Defaults to config iscsi-targets.
+
+multipath-report:
+  description: Return multipath -ll output and optional WWID presence check.
+  params:
+    wwid:
+      type: string
+      description: Optional WWID string to check in multipath output.
+
+pcs-status:
+  description: Return full Pacemaker cluster status (pcs status --full).
+
+backend-move:
+  description: Move backend pacemaker group to a target unit using pcs resource move.
+  params:
+    backend-key:
+      type: string
+      description: Backend key used to derive group name grp-<sanitized-backend-key>. Defaults to config backend-key.
+    target-unit:
+      type: string
+      description: Target unit name (for example lvm-san/1).
+  required:
+    - target-unit
+
+backend-clear-move:
+  description: Clear manual move constraints for backend pacemaker group.
+  params:
+    backend-key:
+      type: string
+      description: Backend key used to derive group name grp-<sanitized-backend-key>. Defaults to config backend-key.
+
+install-snap:
+  description: Install lvm-san-agent snap either from a local file path or from a channel.
+  params:
+    file:
+      type: string
+      description: Local snap file path on unit, for example /tmp/lvm-san-agent_0.1.0_amd64.snap.
+    channel:
+      type: string
+      description: Optional snap channel when installing from store.
+    dangerous:
+      type: boolean
+      default: true
+      description: Add --dangerous when installing from local file.
+    classic:
+      type: boolean
+      default: false
+      description: Add --classic when installing snap.
+
+install-prereqs:
+  description: Install required OS packages using apt-get.
+  params:
+    packages:
+      type: string
+      description: Comma-separated apt package list. Defaults to lvm-san baseline prerequisites.
+
+configure-iscsi-initiator:
+  description: Configure /etc/iscsi/initiatorname.iscsi and restart iscsid.
+  params:
+    iqn:
+      type: string
+      description: Initiator IQN for this unit.
+  required:
+    - iqn
+
+apply-multipath-config:
+  description: Copy a multipath config file into /etc/multipath.conf and restart multipathd.
+  params:
+    source:
+      type: string
+      description: Source file path on the unit.
+  required:
+    - source
+
+bootstrap-cluster:
+  description: Bootstrap a Pacemaker/Corosync cluster for the provided nodes.
+  params:
+    nodes:
+      type: string
+      description: Comma-separated hostnames or IP addresses of cluster nodes.
+    cluster-name:
+      type: string
+      default: lvm-san-cluster
+      description: Pacemaker cluster name.
+    hacluster-password:
+      type: string
+      default: hacluster
+      description: Password to set/use for hacluster user.
+  required:
+    - nodes
+
+set-node-hostname:
+  description: Set OS hostname for this unit.
+  params:
+    hostname:
+      type: string
+      description: Hostname to set on the unit.
+  required:
+    - hostname
+
+restart-cluster-services:
+  description: Restart corosync/pacemaker/pcsd on this unit.
+
+test-export-create:
+  description: Create or reconcile standalone iSCSI test export for current backend.
+
+test-export-delete:
+  description: Delete standalone iSCSI test export resources for current backend.
+
+test-export-show:
+  description: Show standalone iSCSI test export state for current backend.
+
+lvm-lv-create:
+  description: Create an LV in the configured volume group (active backend unit only).
+  params:
+    lv-name:
+      type: string
+      description: New LV name.
+    size:
+      type: string
+      description: LV size (for example 64M, 1G).
+    activate:
+      type: boolean
+      default: true
+      description: Activate the LV after creation.
+  required:
+    - lv-name
+    - size
+
+lvm-lv-remove:
+  description: Remove an LV from the configured volume group (active backend unit only).
+  params:
+    lv-name:
+      type: string
+      description: LV name to remove.
+  required:
+    - lv-name
+
+lvm-lv-resize:
+  description: Extend an LV to a new size (active backend unit only).
+  params:
+    lv-name:
+      type: string
+      description: LV name to resize.
+    size:
+      type: string
+      description: New absolute LV size (for example 128M, 2G).
+  required:
+    - lv-name
+    - size
+
+lvm-lv-activate:
+  description: Activate an LV (lvchange -ay) on the active backend unit.
+  params:
+    lv-name:
+      type: string
+      description: LV name to activate.
+  required:
+    - lv-name
+
+lvm-lv-deactivate:
+  description: Deactivate an LV (lvchange -an) on the active backend unit.
+  params:
+    lv-name:
+      type: string
+      description: LV name to deactivate.
+  required:
+    - lv-name
+
+lvm-lv-rename:
+  description: Rename an LV in the configured volume group (active backend unit only).
+  params:
+    old-name:
+      type: string
+      description: Existing LV name.
+    new-name:
+      type: string
+      description: New LV name.
+  required:
+    - old-name
+    - new-name
+
+lvm-snapshot-create:
+  description: Create an LVM snapshot of an origin LV (active backend unit only).
+  params:
+    origin-lv:
+      type: string
+      description: Origin LV name.
+    snapshot-name:
+      type: string
+      description: Snapshot LV name.
+    size:
+      type: string
+      description: Snapshot size (recommended for non-thin snapshots).
+  required:
+    - origin-lv
+    - snapshot-name
+
+lvm-snapshot-delete:
+  description: Delete an LVM snapshot LV (active backend unit only).
+  params:
+    snapshot-name:
+      type: string
+      description: Snapshot LV name to delete.
+  required:
+    - snapshot-name
+
+lvm-snapshot-revert:
+  description: Revert an origin LV by merging a snapshot (active backend unit only; non-thin only).
+  params:
+    origin-lv:
+      type: string
+      description: Origin LV name to revert.
+    snapshot-name:
+      type: string
+      description: Snapshot LV name to merge.
+    reactivate:
+      type: boolean
+      default: true
+      description: Reactivate origin LV after merge.
+    recreate-snapshot:
+      type: boolean
+      default: false
+      description: Recreate snapshot after merge, mirroring Cinder revert flow.
+    snapshot-size:
+      type: string
+      description: Optional size to use when recreating snapshot.
+  required:
+    - origin-lv
+    - snapshot-name
+
+lvm-lv-show:
+  description: Show LVM LV metadata for the configured volume group.
+  params:
+    lv-name:
+      type: string
+      description: Optional LV name filter.
