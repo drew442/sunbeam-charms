@@ -9,6 +9,7 @@ import logging
 from pathlib import Path
 import re
 import shlex
+import socket
 import subprocess
 import time
 
@@ -949,9 +950,35 @@ class LVMSANCharm(ops.CharmBase):
         nodes = re.findall(r"^\s*\*\s*Node\s+(\S+)", status.stdout, flags=re.MULTILINE)
         if not nodes:
             return None
+        local_node = self._local_cluster_node_name(nodes)
+        try:
+            local_unit_index = int(self.unit.name.rsplit("/", 1)[1])
+        except (IndexError, ValueError):
+            local_unit_index = None
+        if local_node and local_unit_index is not None:
+            if unit_index == local_unit_index:
+                return local_node
+            if len(nodes) == 2:
+                for node in nodes:
+                    if node != local_node:
+                        return node
         suffix = f"-{unit_index}"
         for node in nodes:
             if node.endswith(suffix):
+                return node
+        return None
+
+    @staticmethod
+    def _local_cluster_node_name(nodes: list[str]) -> str | None:
+        local_names = {
+            socket.gethostname(),
+            socket.getfqdn(),
+            socket.gethostname().split(".", 1)[0],
+            socket.getfqdn().split(".", 1)[0],
+        }
+        for node in nodes:
+            short = node.split(".", 1)[0]
+            if node in local_names or short in local_names:
                 return node
         return None
 

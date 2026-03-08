@@ -241,6 +241,35 @@ def test_resolve_target_node_from_unit(tmp_path: Path) -> None:
     harness.cleanup()
 
 
+def test_resolve_target_node_from_two_node_cluster_non_suffix_names(tmp_path: Path) -> None:
+    intent = tmp_path / "intent.json"
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps(_status_payload(ready=True)))
+    harness = ops.testing.Harness(charm.LVMSANCharm, meta=META, actions=ACTIONS)
+    pcs_out = (
+        "Node List:\n"
+        "  * Node lvh03.ntl1 (1): online\n"
+        "  * Node lvh01.ntl1 (2): online\n"
+    )
+    with (
+        patch("charm.subprocess.run") as run_mock,
+        patch("charm.socket.gethostname", return_value="lvh03"),
+        patch("charm.socket.getfqdn", return_value="lvh03.ntl1"),
+    ):
+        run_mock.side_effect = [
+            subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], 0, pcs_out, ""),
+        ]
+        harness.begin()
+        harness.update_config({
+            "vips": "192.0.2.10",
+            "intent-path": str(intent),
+            "status-path": str(status),
+        })
+        assert harness.charm._resolve_target_node("lvm-san/1") == "lvh01.ntl1"
+    harness.cleanup()
+
+
 def test_full_lv_path_with_and_without_vg() -> None:
     assert charm.LVMSANCharm._full_lv_path("cinder-volumes-a", "my-lv") == "cinder-volumes-a/my-lv"
     assert charm.LVMSANCharm._full_lv_path("cinder-volumes-a", "other-vg/my-lv") == "other-vg/my-lv"

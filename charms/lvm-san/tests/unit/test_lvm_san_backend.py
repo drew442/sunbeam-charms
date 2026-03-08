@@ -86,6 +86,7 @@ def test_schema_validation_requires_chap_secret_references() -> None:
 
 
 def test_provider_requirer_round_trip(provider_harness, requirer_harness) -> None:
+    provider_harness.set_leader(True)
     provider_rel_id = provider_harness.add_relation(
         "lvm-san-backend", "cinder-volume-lvm-san"
     )
@@ -124,3 +125,19 @@ def test_provider_requirer_round_trip(provider_harness, requirer_harness) -> Non
     assert parsed.vips == ("192.0.2.10", "192.0.2.11")
     assert parsed.portals == ("192.0.2.10",)
     assert parsed.volume_group == "cinder-volumes"
+
+
+def test_provider_does_not_publish_from_non_leader(provider_harness) -> None:
+    rel_id = provider_harness.add_relation("lvm-san-backend", "cinder-volume-lvm-san")
+    provider_harness.add_relation_unit(rel_id, "cinder-volume-lvm-san/0")
+    provider_harness.set_leader(False)
+
+    backend_data = LvmSanBackendData(
+        backend_key="lvm-san.cinder-volume-lvm-san",
+        vips=("192.0.2.10",),
+        ready=True,
+        status="ready",
+    )
+    provider_harness.charm.interface.set_backend_data(backend_data, rel_id)
+    app_data = provider_harness.get_relation_data(rel_id, provider_harness.charm.app.name)
+    assert app_data == {}
