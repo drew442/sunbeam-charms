@@ -227,11 +227,12 @@ def test_resolve_target_node_from_unit(tmp_path: Path) -> None:
         "  * Node juju-4eb05b-1 (2): online\n"
     )
     with patch("charm.subprocess.run") as run_mock:
-        run_mock.side_effect = [
-            subprocess.CompletedProcess([], 0, "", ""),
-            subprocess.CompletedProcess([], 0, pcs_out, ""),
-            subprocess.CompletedProcess([], 0, pcs_out, ""),
-        ]
+        run_mock.side_effect = lambda args, **kwargs: subprocess.CompletedProcess(
+            [],
+            0,
+            pcs_out if list(args[:3]) == ["pcs", "status", "--full"] else "",
+            "",
+        )
         harness.begin()
         harness.update_config({
             "vips": "192.0.2.10",
@@ -257,11 +258,12 @@ def test_resolve_target_node_from_two_node_cluster_non_suffix_names(tmp_path: Pa
         patch("charm.socket.gethostname", return_value="lvh03"),
         patch("charm.socket.getfqdn", return_value="lvh03.ntl1"),
     ):
-        run_mock.side_effect = [
-            subprocess.CompletedProcess([], 0, "", ""),
-            subprocess.CompletedProcess([], 0, pcs_out, ""),
-            subprocess.CompletedProcess([], 0, pcs_out, ""),
-        ]
+        run_mock.side_effect = lambda args, **kwargs: subprocess.CompletedProcess(
+            [],
+            0,
+            pcs_out if list(args[:3]) == ["pcs", "status", "--full"] else "",
+            "",
+        )
         harness.begin()
         harness.update_config({
             "vips": "192.0.2.10",
@@ -294,6 +296,36 @@ def test_active_backend_unit_name_from_status(tmp_path: Path) -> None:
             }
         )
         assert harness.charm._active_backend_unit_name() == "lvm-san/0"
+    harness.cleanup()
+
+
+def test_active_backend_node_name_from_pcs_group(tmp_path: Path) -> None:
+    intent = tmp_path / "intent.json"
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps(_status_payload(ready=True)))
+    harness = ops.testing.Harness(charm.LVMSANCharm, meta=META, actions=ACTIONS)
+    pcs_out = (
+        "Full List of Resources:\n"
+        "  * Resource Group: grp-lvm-san-default:\n"
+        "    * vip-lvm-san-default-0 (ocf:heartbeat:IPaddr2): Started lvh01.ntl1\n"
+    )
+    with patch("charm.subprocess.run") as run_mock:
+        run_mock.side_effect = lambda args, **kwargs: subprocess.CompletedProcess(
+            [],
+            0,
+            pcs_out if list(args[:3]) == ["pcs", "status", "--full"] else "",
+            "",
+        )
+        harness.begin()
+        harness.update_config(
+            {
+                "vips": "192.0.2.10",
+                "backend-key": "lvm-san.default",
+                "intent-path": str(intent),
+                "status-path": str(status),
+            }
+        )
+        assert harness.charm._active_backend_node_name("lvm-san.default") == "lvh01.ntl1"
     harness.cleanup()
 
 

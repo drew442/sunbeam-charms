@@ -887,6 +887,11 @@ class LVMSANCharm(ops.CharmBase):
         config_portals = self._csv_list(self.config["portals"])
         portals = status_portals or config_portals or vips
 
+        active_unit = backend.get("active_unit")
+        active_node = self._active_backend_node_name(backend_key)
+        if not active_node:
+            active_node = self._resolve_target_node(active_unit or "")
+
         return LvmSanBackendData(
             backend_key=backend_key,
             vips=tuple(vips),
@@ -899,8 +904,8 @@ class LVMSANCharm(ops.CharmBase):
             target_protocol="iscsi",
             auth_type="none",
             preferred_active_unit=backend.get("preferred_active_unit"),
-            active_unit=backend.get("active_unit"),
-            active_node=self._resolve_target_node(backend.get("active_unit", "")),
+            active_unit=active_unit,
+            active_node=active_node,
         )
 
     @staticmethod
@@ -967,6 +972,26 @@ class LVMSANCharm(ops.CharmBase):
         for node in nodes:
             if node.endswith(suffix):
                 return node
+        return None
+
+    def _active_backend_node_name(self, backend_key: str) -> str | None:
+        group = f"grp-{self._sanitize_resource_name(backend_key)}"
+        status = self._run_command(["pcs", "status", "--full"], check=False)
+        if status.returncode != 0:
+            return None
+
+        in_group = False
+        for line in status.stdout.splitlines():
+            if f"Resource Group: {group}:" in line:
+                in_group = True
+                continue
+            if in_group and line.lstrip().startswith("* Resource Group:"):
+                break
+            if not in_group:
+                continue
+            match = re.search(r":\s+Started\s+(\S+)\s*$", line)
+            if match:
+                return match.group(1)
         return None
 
     @staticmethod
