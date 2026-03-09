@@ -900,6 +900,7 @@ class LVMSANCharm(ops.CharmBase):
             auth_type="none",
             preferred_active_unit=backend.get("preferred_active_unit"),
             active_unit=backend.get("active_unit"),
+            active_node=self._resolve_target_node(backend.get("active_unit", "")),
         )
 
     @staticmethod

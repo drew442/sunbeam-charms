@@ -12,7 +12,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 1
+LIBPATCH = 3
 
 import ipaddress
 import json
@@ -51,6 +51,7 @@ class LvmSanBackendData:
     chap_password_secret_id: str | None = None
     preferred_active_unit: str | None = None
     active_unit: str | None = None
+    active_node: str | None = None
 
     def to_relation_data(self) -> dict[str, str]:
         """Dump this dataclass to relation databag-safe values."""
@@ -71,6 +72,7 @@ class LvmSanBackendData:
             "chap-password-secret-id": self.chap_password_secret_id,
             "preferred-active-unit": self.preferred_active_unit,
             "active-unit": self.active_unit,
+            "active-node": self.active_node,
         }
         payload.update({k: v for k, v in optional_fields.items() if v is not None})
         _validate_payload(payload)
@@ -96,6 +98,7 @@ class LvmSanBackendData:
             chap_password_secret_id=payload.get("chap-password-secret-id"),
             preferred_active_unit=payload.get("preferred-active-unit"),
             active_unit=payload.get("active-unit"),
+            active_node=payload.get("active-node"),
         )
 
 
@@ -225,6 +228,13 @@ class LvmSanBackendProvides(Object):
         relation_id: int | None = None,
     ) -> None:
         """Publish backend data on one relation or all relations."""
+        if not self.model.unit.is_leader():
+            logger.debug(
+                "Skipping %s publish on non-leader unit %s",
+                self._relation_name,
+                self.model.unit.name,
+            )
+            return
         payload = backend_data.to_relation_data()
         for relation in self._iter_relations(relation_id):
             relation.data[self.model.app].update(payload)
@@ -313,6 +323,7 @@ def _validate_payload(payload: Mapping[str, Any]) -> None:
         "target-helper",
         "preferred-active-unit",
         "active-unit",
+        "active-node",
     }
     for key in optional_strings:
         if key in payload and payload[key] is not None:

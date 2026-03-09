@@ -39,7 +39,9 @@ def add_complete_cinder_volume_relation(harness: ops.testing.Harness) -> int:
     )
 
 
-def add_lvm_san_relation(harness: ops.testing.Harness, ready: bool = True) -> int:
+def add_lvm_san_relation(
+    harness: ops.testing.Harness, ready: bool = True, active_node: str = "lvh03.ntl1"
+) -> int:
     """Add a complete lvm-san-backend relation to the charm."""
     relation_id = harness.add_relation("lvm-san-backend", "lvm-san")
     harness.add_relation_unit(relation_id, "lvm-san/0")
@@ -57,6 +59,7 @@ def add_lvm_san_relation(harness: ops.testing.Harness, ready: bool = True) -> in
             "auth-type": "none",
             "ready": str(ready).lower(),
             "status": "ready" if ready else "waiting for fencing",
+            "active-node": active_node,
         },
     )
     return relation_id
@@ -102,7 +105,9 @@ class TestCinderVolumeLVMSANOperatorCharm(test_utils.CharmTestCase):
             set(),
         )
 
-    def test_backend_mapping_to_snap_config(self):
+    @patch("charm.socket.gethostname", return_value="lvh03")
+    @patch("charm.socket.getfqdn", return_value="lvh03.ntl1")
+    def test_backend_mapping_to_snap_config(self, _fqdn, _hostname):
         """Backend configuration is rendered from lvm-san relation payload."""
         cinder_volume_snap_mock = MagicMock()
         cinder_volume_snap_mock.present = False
@@ -115,22 +120,40 @@ class TestCinderVolumeLVMSANOperatorCharm(test_utils.CharmTestCase):
         add_lvm_san_relation(self.harness, ready=True)
         add_complete_cinder_volume_relation(self.harness)
 
-        cinder_volume_snap_mock.set.assert_any_call(
+        backend = self.harness.charm.get_backend_configuration()
+        self.assertEqual(
+            backend,
             {
-                "lvm-san.cinder-volume-lvm-san": {
-                    "volume-driver": "cinder.volume.drivers.lvm.LVMVolumeDriver",
-                    "volume-group": "cinder-volumes",
-                    "target-protocol": "iscsi",
-                    "target-helper": "lioadm",
-                    "iscsi-ip-address": "192.0.2.20",
-                    "volume-backend-name": "lvm-san.cinder-volume-lvm-san",
-                    "backend-availability-zone": None,
-                    "lvm-type": "thin",
-                    "lvm-pool-name": "cinder-thin",
-                }
+                "volume-driver": "cinder.volume.drivers.lvm.LVMVolumeDriver",
+                "volume-group": "cinder-volumes",
+                "target-protocol": "iscsi",
+                "target-helper": "lioadm",
+                "iscsi-ip-address": "192.0.2.20",
+                "volume-backend-name": "lvm-san.cinder-volume-lvm-san",
+                "backend-host": "lvm-san-cluster",
+                "backend-availability-zone": None,
+                "lvm-type": "thin",
+                "lvm-pool-name": "cinder-thin",
             },
-            typed=True,
         )
+
+    @patch("charm.socket.gethostname", return_value="lvh01")
+    @patch("charm.socket.getfqdn", return_value="lvh01.ntl1")
+    def test_standby_unit_clears_backend_mapping(self, _fqdn, _hostname):
+        """Standby unit should publish an empty backend stanza."""
+        cinder_volume_snap_mock = MagicMock()
+        cinder_volume_snap_mock.present = False
+        self.snap.SnapState.Latest = "latest"
+        self.snap.SnapCache.return_value = {
+            "cinder-volume": cinder_volume_snap_mock,
+        }
+
+        self.harness.begin_with_initial_hooks()
+        add_lvm_san_relation(self.harness, ready=True, active_node="lvh03.ntl1")
+        add_complete_cinder_volume_relation(self.harness)
+
+        backend = self.harness.charm.get_backend_configuration()
+        self.assertEqual(backend, {})
 
     def test_waits_until_lvm_san_is_ready(self):
         """Charm does not treat lvm-san-backend relation as ready when not ready."""

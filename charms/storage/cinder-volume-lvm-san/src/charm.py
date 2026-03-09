@@ -6,6 +6,7 @@
 """Cinder LVM-SAN operator charm."""
 
 import logging
+import socket
 from collections.abc import Callable, Mapping
 
 import charms.lvm_san.v0.lvm_san_backend as lvm_san_backend
@@ -104,6 +105,14 @@ class CinderVolumeLVMSANOperatorCharm(charm.OSCinderVolumeDriverOperatorCharm):
             raise sunbeam_guard.WaitingExceptionError(
                 "Missing volume-group in lvm-san relation data"
             )
+        if backend_data.active_node and not self._is_local_node(backend_data.active_node):
+            logger.info(
+                "Backend %s is active on %s; clearing local backend config on %s",
+                backend_data.backend_key,
+                backend_data.active_node,
+                self.unit.name,
+            )
+            return {}
 
         iscsi_ip_address = (
             backend_data.portals[0] if backend_data.portals else backend_data.vips[0]
@@ -117,6 +126,7 @@ class CinderVolumeLVMSANOperatorCharm(charm.OSCinderVolumeDriverOperatorCharm):
             or self.model.config.get("target-helper"),
             "iscsi-ip-address": iscsi_ip_address,
             "volume-backend-name": backend_data.backend_key,
+            "backend-host": self.model.config.get("backend-host") or "lvm-san-cluster",
             "backend-availability-zone": self.model.config.get(
                 "backend-availability-zone"
             ),
@@ -128,6 +138,19 @@ class CinderVolumeLVMSANOperatorCharm(charm.OSCinderVolumeDriverOperatorCharm):
             config["lvm-pool-name"] = backend_data.thin_pool
 
         return config
+
+    @staticmethod
+    def _is_local_node(active_node: str) -> bool:
+        candidate = (active_node or "").strip()
+        if not candidate:
+            return False
+        local_names = {
+            socket.gethostname(),
+            socket.getfqdn(),
+            socket.gethostname().split(".", 1)[0],
+            socket.getfqdn().split(".", 1)[0],
+        }
+        return candidate in local_names or candidate.split(".", 1)[0] in local_names
 
 
 if __name__ == "__main__":  # pragma: nocover

@@ -230,6 +230,7 @@ def test_resolve_target_node_from_unit(tmp_path: Path) -> None:
         run_mock.side_effect = [
             subprocess.CompletedProcess([], 0, "", ""),
             subprocess.CompletedProcess([], 0, pcs_out, ""),
+            subprocess.CompletedProcess([], 0, pcs_out, ""),
         ]
         harness.begin()
         harness.update_config({
@@ -258,6 +259,7 @@ def test_resolve_target_node_from_two_node_cluster_non_suffix_names(tmp_path: Pa
     ):
         run_mock.side_effect = [
             subprocess.CompletedProcess([], 0, "", ""),
+            subprocess.CompletedProcess([], 0, pcs_out, ""),
             subprocess.CompletedProcess([], 0, pcs_out, ""),
         ]
         harness.begin()

@@ -33,6 +33,11 @@ config:
       default: lioadm
       description: |
         Cinder target helper to use for iSCSI exports.
+    backend-host:
+      type: string
+      default: lvm-san-cluster
+      description: |
+        Virtual backend host name shared by active/passive lvm-san nodes.
 
 requires:
   cinder-volume:

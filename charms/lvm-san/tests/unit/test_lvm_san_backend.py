@@ -106,6 +106,7 @@ def test_provider_requirer_round_trip(provider_harness, requirer_harness) -> Non
         target_helper="lioadm",
         ready=True,
         status="ready",
+        active_node="lvh03.ntl1",
     )
 
     provider_harness.charm.interface.set_backend_data(backend_data, provider_rel_id)
@@ -125,6 +126,7 @@ def test_provider_requirer_round_trip(provider_harness, requirer_harness) -> Non
     assert parsed.vips == ("192.0.2.10", "192.0.2.11")
     assert parsed.portals == ("192.0.2.10",)
     assert parsed.volume_group == "cinder-volumes"
+    assert parsed.active_node == "lvh03.ntl1"
 
 
 def test_provider_does_not_publish_from_non_leader(provider_harness) -> None:
