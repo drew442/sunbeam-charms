@@ -17,3 +17,14 @@ This charm exposes Juju actions for real standalone operations:
 - `backend-clear-move`: clear backend move constraints.
 
 Run `juju actions lvm-san` for details and required params.
+
+## Config notes
+
+- `iscsi-targets` must be a comma-separated list of IP addresses.
+- Do not include `:3260` in `iscsi-targets`; the charm/snap use the default iSCSI port.
+
+## Troubleshooting
+
+- If a unit is stuck after an earlier hook failure, replay hooks and reconcile:
+  - `juju resolved lvm-san/<unit>`
+  - `juju run lvm-san/<unit> reconcile-now`
