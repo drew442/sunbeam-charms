@@ -4,6 +4,7 @@
 """Unit tests for lvm-san-backend relation library."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import ops
 import ops.testing
@@ -19,6 +20,7 @@ from charms.lvm_san.v0.lvm_san_backend import (  # noqa:E402
     LvmSanBackendProvides,
     LvmSanBackendRequires,
 )
+from ops.model import ModelError  # noqa:E402
 
 
 class ProviderCharm(ops.CharmBase):
@@ -143,3 +145,21 @@ def test_provider_does_not_publish_from_non_leader(provider_harness) -> None:
     provider_harness.charm.interface.set_backend_data(backend_data, rel_id)
     app_data = provider_harness.get_relation_data(rel_id, provider_harness.charm.app.name)
     assert app_data == {}
+
+
+def test_provider_ignores_model_error_while_updating_relation_data(provider_harness) -> None:
+    provider_harness.set_leader(True)
+    backend_data = LvmSanBackendData(
+        backend_key="lvm-san.cinder-volume-lvm-san",
+        vips=("192.0.2.10",),
+        ready=True,
+        status="ready",
+    )
+    relation = MagicMock()
+    relation.id = 28
+    relation.data.__getitem__.return_value.update.side_effect = ModelError(
+        "ERROR permission denied (unauthorized access)"
+    )
+    provider_harness.charm.interface._iter_relations = MagicMock(return_value=[relation])
+
+    provider_harness.charm.interface.set_backend_data(backend_data)

@@ -12,7 +12,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 3
+LIBPATCH = 4
 
 import ipaddress
 import json
@@ -22,7 +22,7 @@ from typing import Any, Mapping
 
 from ops.charm import CharmBase, RelationBrokenEvent, RelationChangedEvent
 from ops.framework import EventBase, EventSource, Handle, Object, ObjectEvents
-from ops.model import Relation
+from ops.model import ModelError, Relation
 
 logger = logging.getLogger(__name__)
 
@@ -237,7 +237,15 @@ class LvmSanBackendProvides(Object):
             return
         payload = backend_data.to_relation_data()
         for relation in self._iter_relations(relation_id):
-            relation.data[self.model.app].update(payload)
+            try:
+                relation.data[self.model.app].update(payload)
+            except ModelError as exc:
+                logger.warning(
+                    "Skipping %s relation %s update due to model error: %s",
+                    self._relation_name,
+                    relation.id,
+                    exc,
+                )
 
     def _iter_relations(self, relation_id: int | None = None) -> list[Relation]:
         relations = self.model.relations.get(self._relation_name, [])
