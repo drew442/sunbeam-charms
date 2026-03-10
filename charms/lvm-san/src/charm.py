@@ -44,6 +44,9 @@ class LVMSANCharm(ops.CharmBase):
         self.framework.observe(self.on.pcs_status_action, self._on_pcs_status_action)
         self.framework.observe(self.on.backend_move_action, self._on_backend_move_action)
         self.framework.observe(
+            self.on.backend_failover_action, self._on_backend_failover_action
+        )
+        self.framework.observe(
             self.on.backend_clear_move_action, self._on_backend_clear_move_action
         )
         self.framework.observe(self.on.install_snap_action, self._on_install_snap_action)
@@ -255,25 +258,12 @@ class LVMSANCharm(ops.CharmBase):
         if not group_name:
             event.fail(f"unable to resolve pacemaker backend group for {backend_key}")
             return
-        result = self._run_command(
-            ["pcs", "resource", "move", group_name, target_node], check=False
+        moved, already_on_target, message = self._move_backend_group_to_node(
+            group_name, target_node
         )
-        if result.returncode != 0:
-            message = (result.stderr or result.stdout or "").strip()
-            if "Requested item already exists" in message:
-                event.set_results(
-                    {
-                        "group": group_name,
-                        "target-unit": target_unit,
-                        "target-node": target_node,
-                        "moved": False,
-                        "already-on-target": True,
-                    }
-                )
-                return
+        if not moved and not already_on_target:
             event.fail(
-                f"failed to move resource group {group_name} to {target_node}: "
-                f"{message}"
+                f"failed to move resource group {group_name} to {target_node}: {message}"
             )
             return
         event.set_results(
@@ -281,8 +271,88 @@ class LVMSANCharm(ops.CharmBase):
                 "group": group_name,
                 "target-unit": target_unit,
                 "target-node": target_node,
-                "moved": True,
-                "already-on-target": False,
+                "moved": moved,
+                "already-on-target": already_on_target,
+            }
+        )
+
+    def _on_backend_failover_action(self, event: ops.ActionEvent) -> None:
+        backend_key = (event.params.get("backend-key") or self.config["backend-key"]).strip()
+        target_unit = (event.params.get("target-unit") or "").strip()
+        timeout = int(event.params.get("timeout") or 120)
+        clear_constraint = bool(event.params.get("clear-constraint", True))
+
+        if not target_unit:
+            event.fail("target-unit is required (example: lvm-san/1)")
+            return
+        if timeout < 1:
+            event.fail("timeout must be at least 1 second")
+            return
+        target_node = self._resolve_target_node(target_unit)
+        if not target_node:
+            event.fail(
+                f"unable to resolve target-unit {target_unit} to a pacemaker node name"
+            )
+            return
+        group_name = self._resolve_backend_group_name(backend_key)
+        if not group_name:
+            event.fail(f"unable to resolve pacemaker backend group for {backend_key}")
+            return
+
+        pre_status = self._run_command(["pcs", "status", "--full"], check=False)
+        if pre_status.returncode != 0:
+            event.fail("pcs status --full failed during failover precheck")
+            return
+        online_nodes = self._pcs_online_nodes(pre_status.stdout)
+        if target_node not in online_nodes:
+            event.fail(f"target node {target_node} is not online in cluster status")
+            return
+
+        from_node = self._backend_group_started_node(group_name, pre_status.stdout)
+        moved, already_on_target, message = self._move_backend_group_to_node(
+            group_name, target_node
+        )
+        if not moved and not already_on_target:
+            event.fail(
+                f"failed to move resource group {group_name} to {target_node}: {message}"
+            )
+            return
+
+        converged = self._wait_for_backend_group_node(group_name, target_node, timeout)
+        if not converged:
+            current_node = self._active_backend_node_name(backend_key) or ""
+            event.fail(
+                "backend failover timed out waiting for "
+                f"{group_name} on {target_node} (current: {current_node or 'unknown'})"
+            )
+            return
+
+        cleared = False
+        if clear_constraint:
+            clear_result = self._run_command(
+                ["pcs", "resource", "clear", group_name], check=False
+            )
+            if clear_result.returncode != 0:
+                event.fail(
+                    f"backend moved but failed to clear move constraints for {group_name}"
+                )
+                return
+            cleared = True
+
+        event.set_results(
+            {
+                "group": group_name,
+                "backend-key": backend_key,
+                "target-unit": target_unit,
+                "target-node": target_node,
+                "from-node": from_node or "",
+                "to-node": target_node,
+                "moved": moved,
+                "already-on-target": already_on_target,
+                "converged": True,
+                "clear-constraint": clear_constraint,
+                "constraint-cleared": cleared,
+                "timeout": timeout,
             }
         )
 
@@ -1009,6 +1079,49 @@ class LVMSANCharm(ops.CharmBase):
             status_output,
             flags=re.MULTILINE,
         )
+
+    def _move_backend_group_to_node(
+        self, group_name: str, target_node: str
+    ) -> tuple[bool, bool, str]:
+        result = self._run_command(
+            ["pcs", "resource", "move", group_name, target_node], check=False
+        )
+        if result.returncode == 0:
+            return True, False, ""
+        message = (result.stderr or result.stdout or "").strip()
+        if "Requested item already exists" in message:
+            return False, True, message
+        return False, False, message
+
+    def _backend_group_started_node(
+        self, group_name: str, status_output: str
+    ) -> str | None:
+        in_group = False
+        for line in status_output.splitlines():
+            if f"Resource Group: {group_name}:" in line:
+                in_group = True
+                continue
+            if in_group and line.lstrip().startswith("* Resource Group:"):
+                break
+            if not in_group:
+                continue
+            match = re.search(r":\s+Started\s+(\S+)\s*$", line)
+            if match:
+                return match.group(1)
+        return None
+
+    def _wait_for_backend_group_node(
+        self, group_name: str, target_node: str, timeout: int, interval: int = 2
+    ) -> bool:
+        deadline = time.time() + max(timeout, 1)
+        while time.time() < deadline:
+            status = self._run_command(["pcs", "status", "--full"], check=False)
+            if status.returncode == 0:
+                active = self._backend_group_started_node(group_name, status.stdout)
+                if active == target_node:
+                    return True
+            time.sleep(max(interval, 1))
+        return False
 
     def _resolve_backend_group_name(self, backend_key: str) -> str | None:
         sanitized = self._sanitize_resource_name(backend_key)

@@ -44,6 +44,26 @@ backend-move:
   required:
     - target-unit
 
+backend-failover:
+  description: Orchestrate backend failover by moving Pacemaker group, waiting for convergence, and optionally clearing move constraints.
+  params:
+    backend-key:
+      type: string
+      description: Backend key used to derive group name grp-<sanitized-backend-key>. Defaults to config backend-key.
+    target-unit:
+      type: string
+      description: Target unit name (for example lvm-san/1).
+    timeout:
+      type: integer
+      default: 120
+      description: Seconds to wait for group to start on target node.
+    clear-constraint:
+      type: boolean
+      default: true
+      description: Clear move constraints after successful failover.
+  required:
+    - target-unit
+
 backend-clear-move:
   description: Clear manual move constraints for backend pacemaker group.
   params:

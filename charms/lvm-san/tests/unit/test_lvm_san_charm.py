@@ -31,6 +31,7 @@ iscsi-login:
 multipath-report:
 pcs-status:
 backend-move:
+backend-failover:
 backend-clear-move:
 install-snap:
 install-prereqs:
@@ -406,4 +407,130 @@ def test_lvm_snapshot_revert_rejects_thin_snapshot(tmp_path: Path) -> None:
         harness.charm._on_lvm_snapshot_revert_action(event)  # type: ignore[arg-type]
 
     assert event.failed == "snapshot revert is not supported for thin LVM snapshots"
+    harness.cleanup()
+
+
+def test_backend_failover_action_success(tmp_path: Path) -> None:
+    intent = tmp_path / "intent.json"
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps(_status_payload(ready=True)))
+    harness = ops.testing.Harness(charm.LVMSANCharm, meta=META, actions=ACTIONS)
+    with patch("charm.subprocess.run") as run_mock:
+        run_mock.return_value = subprocess.CompletedProcess([], 0, "", "")
+        harness.begin()
+        harness.update_config(
+            {
+                "vips": "192.0.2.10",
+                "backend-key": "lvm-san.default",
+                "intent-path": str(intent),
+                "status-path": str(status),
+            }
+        )
+
+    class _Event:
+        def __init__(self) -> None:
+            self.params = {"target-unit": "lvm-san/1", "timeout": 30}
+            self.failed: str | None = None
+            self.results: dict = {}
+
+        def fail(self, message: str) -> None:
+            self.failed = message
+
+        def set_results(self, results: dict) -> None:
+            self.results = results
+
+    pcs_pre = (
+        "Node List:\n"
+        "  * Node lvh03.ntl1 (1): online\n"
+        "  * Node lvh01.ntl1 (2): online\n"
+        "Full List of Resources:\n"
+        "  * Resource Group: grp-lvm-san-default:\n"
+        "    * vip-lvm-san-default-0 (ocf:heartbeat:IPaddr2): Started lvh03.ntl1\n"
+    )
+    pcs_post = (
+        "Node List:\n"
+        "  * Node lvh03.ntl1 (1): online\n"
+        "  * Node lvh01.ntl1 (2): online\n"
+        "Full List of Resources:\n"
+        "  * Resource Group: grp-lvm-san-default:\n"
+        "    * vip-lvm-san-default-0 (ocf:heartbeat:IPaddr2): Started lvh01.ntl1\n"
+    )
+
+    event = _Event()
+
+    def _run(args, **kwargs):
+        cmd = list(args[:3])
+        if cmd == ["pcs", "status", "--full"]:
+            _run.count += 1
+            output = pcs_pre if _run.count == 1 else pcs_post
+            return subprocess.CompletedProcess([], 0, output, "")
+        if cmd == ["pcs", "resource", "move"]:
+            return subprocess.CompletedProcess([], 0, "", "")
+        if cmd == ["pcs", "resource", "clear"]:
+            return subprocess.CompletedProcess([], 0, "", "")
+        if cmd == ["pcs", "resource", "show"]:
+            return subprocess.CompletedProcess([], 0, "", "")
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    _run.count = 0  # type: ignore[attr-defined]
+
+    with (
+        patch.object(harness.charm, "_resolve_target_node", return_value="lvh01.ntl1"),
+        patch("charm.subprocess.run", side_effect=_run),
+    ):
+        harness.charm._on_backend_failover_action(event)  # type: ignore[arg-type]
+
+    assert event.failed is None
+    assert event.results["group"] == "grp-lvm-san-default"
+    assert event.results["target-node"] == "lvh01.ntl1"
+    assert event.results["moved"] is True
+    assert event.results["converged"] is True
+    harness.cleanup()
+
+
+def test_backend_failover_action_fails_if_target_offline(tmp_path: Path) -> None:
+    intent = tmp_path / "intent.json"
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps(_status_payload(ready=True)))
+    harness = ops.testing.Harness(charm.LVMSANCharm, meta=META, actions=ACTIONS)
+    with patch("charm.subprocess.run") as run_mock:
+        run_mock.return_value = subprocess.CompletedProcess([], 0, "", "")
+        harness.begin()
+        harness.update_config(
+            {
+                "vips": "192.0.2.10",
+                "backend-key": "lvm-san.default",
+                "intent-path": str(intent),
+                "status-path": str(status),
+            }
+        )
+
+    class _Event:
+        def __init__(self) -> None:
+            self.params = {"target-unit": "lvm-san/1", "timeout": 30}
+            self.failed: str | None = None
+            self.results: dict = {}
+
+        def fail(self, message: str) -> None:
+            self.failed = message
+
+        def set_results(self, results: dict) -> None:
+            self.results = results
+
+    pcs_pre = (
+        "Node List:\n"
+        "  * Node lvh03.ntl1 (1): online\n"
+        "  * Node lvh01.ntl1 (2): OFFLINE\n"
+    )
+    event = _Event()
+    with (
+        patch.object(harness.charm, "_resolve_target_node", return_value="lvh01.ntl1"),
+        patch(
+            "charm.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0, pcs_pre, ""),
+        ),
+    ):
+        harness.charm._on_backend_failover_action(event)  # type: ignore[arg-type]
+
+    assert event.failed == "target node lvh01.ntl1 is not online in cluster status"
     harness.cleanup()
