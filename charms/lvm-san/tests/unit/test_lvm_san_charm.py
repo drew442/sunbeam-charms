@@ -329,6 +329,43 @@ def test_active_backend_node_name_from_pcs_group(tmp_path: Path) -> None:
     harness.cleanup()
 
 
+def test_resolve_backend_group_name_fallback_single_group(tmp_path: Path) -> None:
+    intent = tmp_path / "intent.json"
+    status = tmp_path / "status.json"
+    status.write_text(json.dumps(_status_payload(ready=True)))
+    harness = ops.testing.Harness(charm.LVMSANCharm, meta=META, actions=ACTIONS)
+    pcs_out = (
+        "Full List of Resources:\n"
+        "  * Resource Group: grp-lvm-san-cinder-volume-lvm-san:\n"
+        "    * vip-lvm-san-cinder-volume-lvm-san-0 (ocf:heartbeat:IPaddr2): Started lvh01.ntl1\n"
+    )
+
+    def _run(args, **kwargs):
+        if list(args[:3]) == ["pcs", "resource", "show"]:
+            return subprocess.CompletedProcess([], 1, "", "not found")
+        if list(args[:3]) == ["pcs", "status", "--full"]:
+            return subprocess.CompletedProcess([], 0, pcs_out, "")
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    with patch("charm.subprocess.run", side_effect=_run):
+        harness.begin()
+        harness.update_config(
+            {
+                "vips": "192.0.2.10",
+                "backend-key": "lvm-san.cinder-volume-lvm-san-noha",
+                "intent-path": str(intent),
+                "status-path": str(status),
+            }
+        )
+        assert (
+            harness.charm._resolve_backend_group_name(
+                "lvm-san.cinder-volume-lvm-san-noha"
+            )
+            == "grp-lvm-san-cinder-volume-lvm-san"
+        )
+    harness.cleanup()
+
+
 def test_lvm_snapshot_revert_rejects_thin_snapshot(tmp_path: Path) -> None:
     intent = tmp_path / "intent.json"
     status = tmp_path / "status.json"

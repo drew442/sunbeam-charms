@@ -251,7 +251,10 @@ class LVMSANCharm(ops.CharmBase):
                 f"unable to resolve target-unit {target_unit} to a pacemaker node name"
             )
             return
-        group_name = f"grp-{self._sanitize_resource_name(backend_key)}"
+        group_name = self._resolve_backend_group_name(backend_key)
+        if not group_name:
+            event.fail(f"unable to resolve pacemaker backend group for {backend_key}")
+            return
         result = self._run_command(
             ["pcs", "resource", "move", group_name, target_node], check=False
         )
@@ -285,7 +288,10 @@ class LVMSANCharm(ops.CharmBase):
 
     def _on_backend_clear_move_action(self, event: ops.ActionEvent) -> None:
         backend_key = (event.params.get("backend-key") or self.config["backend-key"]).strip()
-        group_name = f"grp-{self._sanitize_resource_name(backend_key)}"
+        group_name = self._resolve_backend_group_name(backend_key)
+        if not group_name:
+            event.fail(f"unable to resolve pacemaker backend group for {backend_key}")
+            return
         result = self._run_command(
             ["pcs", "resource", "clear", group_name], check=False
         )
@@ -975,7 +981,9 @@ class LVMSANCharm(ops.CharmBase):
         return None
 
     def _active_backend_node_name(self, backend_key: str) -> str | None:
-        group = f"grp-{self._sanitize_resource_name(backend_key)}"
+        group = self._resolve_backend_group_name(backend_key)
+        if not group:
+            return None
         status = self._run_command(["pcs", "status", "--full"], check=False)
         if status.returncode != 0:
             return None
@@ -993,6 +1001,44 @@ class LVMSANCharm(ops.CharmBase):
             if match:
                 return match.group(1)
         return None
+
+    @staticmethod
+    def _pcs_resource_groups(status_output: str) -> list[str]:
+        return re.findall(
+            r"^\s*\*\s*Resource Group:\s+(\S+):\s*$",
+            status_output,
+            flags=re.MULTILINE,
+        )
+
+    def _resolve_backend_group_name(self, backend_key: str) -> str | None:
+        sanitized = self._sanitize_resource_name(backend_key)
+        expected = f"grp-{sanitized}"
+        show = self._run_command(["pcs", "resource", "show", expected], check=False)
+        if show.returncode == 0:
+            return expected
+
+        status = self._run_command(["pcs", "status", "--full"], check=False)
+        if status.returncode != 0:
+            return expected
+
+        groups = self._pcs_resource_groups(status.stdout)
+        if not groups:
+            return expected
+        if expected in groups:
+            return expected
+        if len(groups) == 1:
+            return groups[0]
+
+        candidates = [sanitized]
+        for suffix in ("-noha", "-ha"):
+            if sanitized.endswith(suffix):
+                candidates.append(sanitized[: -len(suffix)])
+        for candidate in candidates:
+            prefixed = f"grp-{candidate}"
+            for group in groups:
+                if group == prefixed or group.startswith(prefixed):
+                    return group
+        return expected
 
     @staticmethod
     def _local_cluster_node_name(nodes: list[str]) -> str | None:
